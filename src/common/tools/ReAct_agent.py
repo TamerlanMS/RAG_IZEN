@@ -81,20 +81,21 @@ def create_order(
     """
     total = 0
     lines: List[str] = []
-    count = 1
+    counter = 1
     total_products = 0
-    for i, it in enumerate(items, start=1):
+    for it in items:
         price = int(round(float(it.price)))
         qty = int(it.quantity)
         line_sum = price * qty
         total_products += line_sum
         lines.append(
-            f"№{i}: {it.name}\n"
+            f"№{counter}: {it.name}\n"
             f"Цена: {price} тг/шт.\n"
             f"Количество: {qty} шт.\n"
             f"Сумма: {line_sum} тг"
         )
-
+        counter += 1
+        
     lines_str = "\n".join(lines)
     date_str = order_data
     comment = comment or "несрочно"
