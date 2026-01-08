@@ -46,7 +46,7 @@ class LLMSettings(OpenAIModel):
     """Конфигурация для языковой модели OpenAI."""
 
     chat_model: str = Field(
-        default="gpt-4o-mini", description="Название модели для чата"
+        default="gpt-5.2", description="Название модели для чата"
     )
     temperature: float = Field(
         default=0.2, ge=0.0, le=1.0, description="Креативность модели"
