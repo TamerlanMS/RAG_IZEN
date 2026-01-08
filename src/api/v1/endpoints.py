@@ -19,39 +19,49 @@ logger.info("Starting app .....")
 # ---------------- Agent ---------------- #
 
 @router.get("/ask_llm", tags=["Agent"])
-async def ask_agent(request: Request) -> Dict[str, Any]:
-    """
-    Легаси-версия (GET с JSON-телом).
-    Ожидает body:
-      { "user_input": "<текст>", "thread_id": "<ид сессии>" }
-    """
+async def ask_agent(
+    request: Request,
+) -> Any:
     try:
         body = await request.json()
-        user_input = body.get("user_input")
-        thread_id = body.get("thread_id")
-        if not user_input or not thread_id:
-            raise ValueError("Both 'user_input' and 'thread_id' are required")
-        inputs = {"messages": [("user", user_input)]}
-        config = {"configurable": {"thread_id": thread_id, "recursion_limit": 50}}
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-    except Exception as e:
+        user_input = body.get("user_input", None)
+        thread_id = body.get("thread_id", None)
+        if user_input and thread_id:
+            inputs = {"messages": [("user", user_input)]}
+            config = {
+                "configurable": {"thread_id": thread_id},
+                "recursion_limit": 100
+            }
+        else:
+            raise ValueError
+
+    except ValueError:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid JSON body: {e}",
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON body"
+        )
+    except Exception as e:
+        logger.error("Unexpected error with request body - %s", e, exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Internal server error: {e}",
         )
 
     try:
-        result = agent.invoke(inputs, config=config)
-        ai_answer = result["messages"][-1].content
-        return {"answer": ai_answer}
-    except KeyError:
+        answer = agent.invoke(inputs, config=config)
+        ai_answer = answer["messages"][-1].content
+    except AttributeError:
+        logger.warning("Unexpected response format from agent", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Unexpected response format from agent",
         )
     except Exception as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+        logger.error("Unexpected error with answer from LLM - %s", e, exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+        )
+
+    return {"answer": ai_answer}
 
 
 # ---------------- DB utils ---------------- #
