@@ -10,6 +10,8 @@ from langchain_core.tools import BaseTool, tool
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, StateGraph, add_messages
 from langgraph.prebuilt import ToolNode
+from datetime import datetime, timezone as dt_timezone, timedelta
+from typing import Optional
 
 from src.common.llm_model import LLM
 from src.common.Schemas.product_schemas import ItemOrder, Order
@@ -19,6 +21,94 @@ from src.db.database import get_db
 from src.settings.config import AGENT_PROMPT
 
 load_dotenv()
+
+try:
+    from zoneinfo import ZoneInfo  # py3.9+
+except Exception:
+    ZoneInfo = None
+
+@tool
+def get_current_time(
+    timezone: Optional[str] = "Asia/Qyzylorda",
+    format: str = "iso",
+    include_components: bool = True,
+) -> dict:
+    """
+    Вернуть текущее время/дату.
+
+    Аргументы:
+      - timezone: IANA-таймзона (например, 'Asia/Qyzylorda'). Неверная -> UTC.
+      - format: 'iso' | 'rfc3339' | 'unix' | 'custom'
+      - include_components: добавить ли разложение по частям (date, time, year...).
+
+    Возвращает JSON-совместимый словарь:
+      {
+        "result": <строка/число>,
+        "timezone": <строка>,
+        "iso_utc": <ISO в UTC c Z>,
+        "unix": <int unix seconds>,
+        "components": {...}  # если include_components=True
+      }
+    """
+
+    # --- таймзона ---
+    tz = dt_timezone.utc
+    tz_name = "UTC"
+    if timezone and ZoneInfo is not None:
+        try:
+            tz = ZoneInfo(timezone)  # type: ignore[arg-type]
+            tz_name = timezone
+        except Exception:
+            tz = dt_timezone.utc
+            tz_name = "UTC"
+
+    now = datetime.now(tz)
+    now_utc = now.astimezone(dt_timezone.utc)
+
+    # --- основное поле result ---
+    fmt = (format or "iso").lower()
+    if fmt == "iso":
+        result = now.isoformat()
+    elif fmt == "rfc3339":
+        s = now.isoformat()
+        # если UTC — делаем Z
+        if now.utcoffset() == timedelta(0):
+            s = now_utc.replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        result = s
+    elif fmt == "unix":
+        result = int(now.timestamp())
+    elif fmt == "custom":
+        # Можно заменить под нужный формат, если надо
+        result = now.strftime("%Y-%m-%d %H:%M:%S")
+    else:
+        result = now.isoformat()
+
+    out = {
+        "result": result,
+        "timezone": tz_name,
+        "iso_utc": now_utc.replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+        "unix": int(now.timestamp()),
+    }
+
+    if include_components:
+        out["components"] = {
+            "date": now.date().isoformat(),
+            "time": now.time().replace(microsecond=0).isoformat(),
+            "year": now.year,
+            "month": now.month,
+            "day": now.day,
+            "hour": now.hour,
+            "minute": now.minute,
+            "second": now.second,
+            # +HH:MM
+            "utc_offset": (
+                ("+" if (now.utcoffset() or timedelta(0)) >= timedelta(0) else "-")
+                + f"{abs(int((now.utcoffset() or timedelta(0)).total_seconds())) // 3600:02d}:"
+                + f"{(abs(int((now.utcoffset() or timedelta(0)).total_seconds())) % 3600) // 60:02d}"
+            ),
+        }
+
+    return out
 
 class AgentState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], add_messages]
@@ -128,6 +218,7 @@ tools: List[BaseTool] = [
     get_current_price,
     check_phone_number,
     create_order,
+    get_current_time,
 ]
 tool_node = ToolNode(tools)
 llm = LLM.bind_tools(tools)
