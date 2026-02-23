@@ -203,6 +203,9 @@ def get_product_price(product_name: str) -> Optional[str]:
     return row[0] if row else None
 
 def get_all_products() -> List[str]:
-    db = next(get_db())
-    rows = db.execute(select(Product.name)).all()
-    return [r[0] for r in rows]
+    db = SessionLocal()
+    try:
+        rows = db.execute(select(Product.name)).all()
+        return [r[0] for r in rows]
+    finally:
+        db.close()
